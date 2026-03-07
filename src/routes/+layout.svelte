@@ -1,3 +1,16 @@
+<script lang="ts">
+  // 先ほど作ったコンポーネントを読み込みます
+  import BottomNav from '$lib/components/BottomNav.svelte';
+</script>
+
+<div class="app-container">
+  <main class="content">
+    <slot />
+  </main>
+
+  <BottomNav />
+</div>
+
 <style>
   /* 全体の背景（少し暗めの色） */
   :global(body) {
