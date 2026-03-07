@@ -95,7 +95,7 @@
     <div class="settings-card">
       
       <div class="section">
-        <label for="nameInput" class="section-label">ユーザー名（言い訳ネーム）の変更</label>
+        <label for="nameInput" class="section-label">ユーザー名の変更</label>
         <div class="input-group">
           <input 
             id="nameInput" 

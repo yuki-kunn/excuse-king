@@ -94,7 +94,7 @@
     </div>
 
     <div class="history-section">
-      <h3 class="section-title">📜 あなたの伝説（投稿履歴）</h3>
+      <h3 class="section-title">📜 投稿履歴</h3>
       
       {#if myPosts.length === 0}
         <p class="empty-text">まだ投稿がありません。お題に挑戦してみよう！</p>
