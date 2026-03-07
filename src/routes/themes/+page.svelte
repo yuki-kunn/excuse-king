@@ -1,151 +1,193 @@
 <script lang="ts">
-  import { db } from '$lib/firebase/firebase';
-  // Firestoreからデータを取得・追加・監視するための機能を読み込みます
+  import { db, auth } from '$lib/firebase/firebase';
   import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
 
-  // お題のデータを格納する配列（リスト）です
   let themes: any[] = [];
+  let unsubscribe: () => void;
 
-  // 画面が表示されたときに実行される処理
+  // 手動追加用
+  let manualThemeText = "";
+  let isAddingManual = false;
+
+  // AI自動生成用
+  let isGeneratingAI = false;
+
+  // ページネーション用設定
+  let currentPage = 1;
+  const itemsPerPage = 20;
+
+  // Svelteの強力な機能。ページ番号が変わるたびに、自動で20件分だけを切り取ってくれます
+  $: totalPages = Math.max(1, Math.ceil(themes.length / itemsPerPage));
+  $: paginatedThemes = themes.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+
   onMount(() => {
-    // 1. データベースの "themes" コレクションを指定し、"createdAt"（作成日時）の降順（新しい順）で並び替える設定を作ります
+    // 新しいお題が上に来るように 'desc' で取得します
     const q = query(collection(db, 'themes'), orderBy('createdAt', 'desc'));
-
-    // 2. onSnapshotを使うことで、データベースに変更があったらリアルタイムで自動的に画面が更新されるようになります
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      // 取得したデータを、扱いやすい配列の形に変換して themes 変数に入れます
+    unsubscribe = onSnapshot(q, (snapshot) => {
       themes = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data()
       }));
     });
-
-    // 画面を離れた時に監視を解除します（メモリ節約のため）
-    return () => unsubscribe();
   });
 
-  // 【開発用】テスト用のお題をデータベースに追加する機能
-  const addDummyTheme = async () => {
-    const dummyTexts = [
-      "「なぜ昨日、私のプリン食べたの？」に対する言い訳",
-      "「また遅刻？今日で3回目だよ？」に対する言い訳",
-      "「宿題、犬が食べたって本当ですか？」に対する言い訳"
-    ];
-    // ランダムに1つ選ぶ
-    const randomText = dummyTexts[Math.floor(Math.random() * dummyTexts.length)];
+  onDestroy(() => {
+    if (unsubscribe) unsubscribe();
+  });
 
+  // 1. 手動でお題を追加
+  const handleManualAdd = async () => {
+    if (!manualThemeText.trim()) {
+      alert("お題を入力してください！");
+      return;
+    }
+    const user = auth.currentUser;
+    if (!user) {
+      alert("お題を追加するにはログインが必要です。");
+      return;
+    }
+
+    isAddingManual = true;
     try {
-      // データベースの "themes" コレクションに新しいデータを追加します
       await addDoc(collection(db, 'themes'), {
-        content: randomText, // お題の本文
-        createdAt: serverTimestamp() // 現在の時刻をサーバー時間で保存
+        content: manualThemeText,
+        createdAt: serverTimestamp(),
+        createdBy: user.uid
       });
+      manualThemeText = "";
+      currentPage = 1; // 追加したら最新が見えるように1ページ目に戻す
     } catch (error) {
-      console.error("お題の追加に失敗しました:", error);
-      alert("エラーが発生しました。");
+      console.error("手動追加エラー:", error);
+      alert("お題の追加に失敗しました。");
+    }
+    isAddingManual = false;
+  };
+
+  // 2. AIにお題を自動生成させる
+  const handleAIGenerate = async () => {
+    const user = auth.currentUser;
+    if (!user) {
+      alert("お題を生成するにはログインが必要です。");
+      return;
+    }
+
+    isGeneratingAI = true;
+    try {
+      const response = await fetch('/api/generateTheme', { method: 'POST' });
+      if (!response.ok) throw new Error("APIエラー");
+      
+      const data = await response.json();
+      
+      await addDoc(collection(db, 'themes'), {
+        content: data.themeText,
+        createdAt: serverTimestamp(),
+        createdBy: 'AI' // AIが作った印
+      });
+      currentPage = 1;
+    } catch (error) {
+      console.error("AI生成エラー:", error);
+      alert("AIお題の生成に失敗しました。");
+    }
+    isGeneratingAI = false;
+  };
+
+  // ページ移動処理（移動した時に画面の一番上にスクロールさせます）
+  const goToPage = (page: number) => {
+    if (page >= 1 && page <= totalPages) {
+      currentPage = page;
+      window.scrollTo({ top: 0, behavior: 'smooth' });
     }
   };
 </script>
 
 <div class="themes-container">
-  <h2>お題一覧</h2>
-  
-  <button class="dev-btn" on:click={addDummyTheme}>
-    ＋ ダミーお題を追加 (開発用)
-  </button>
+  <h2 class="page-title">お題一覧</h2>
 
-  <div class="theme-list">
+  <div class="create-section">
+    <div class="manual-create">
+      <input 
+        type="text" 
+        class="theme-input" 
+        bind:value={manualThemeText} 
+        placeholder="自分で新しいお題を考える..."
+        maxlength="50"
+      />
+      <button class="btn add-btn" on:click={handleManualAdd} disabled={isAddingManual}>
+        {isAddingManual ? '追加中...' : '✍️ 手動で追加'}
+      </button>
+    </div>
+
+    <div class="ai-create">
+      <p class="ai-hint">または、AIに無茶振りお題を作ってもらう</p>
+      <button class="btn ai-btn" on:click={handleAIGenerate} disabled={isGeneratingAI}>
+        {isGeneratingAI ? '🤖 考案中...' : '✨ AIに自動生成させる'}
+      </button>
+    </div>
+  </div>
+
+  <div class="themes-list">
     {#if themes.length === 0}
-      <p class="empty-text">まだお題がありません。ダミーを追加してみてください！</p>
+      <p class="empty-text">お題がありません。最初のお題を作ってみよう！</p>
     {:else}
-      {#each themes as theme}
+      {#each paginatedThemes as theme}
         <a href={`/themes/${theme.id}`} class="theme-card">
-          <div class="card-icon">💬</div>
-          <div class="card-content">
-            <p class="theme-text">{theme.content}</p>
-          </div>
+          <span class="theme-icon">👑</span>
+          <p class="theme-content">{theme.content}</p>
         </a>
       {/each}
     {/if}
   </div>
+
+  {#if totalPages > 1}
+    <div class="pagination">
+      <button class="page-btn" disabled={currentPage === 1} on:click={() => goToPage(currentPage - 1)}>
+        ◀ 前へ
+      </button>
+      
+      <span class="page-info">{currentPage} / {totalPages}</span>
+      
+      <button class="page-btn" disabled={currentPage === totalPages} on:click={() => goToPage(currentPage + 1)}>
+        次へ ▶
+      </button>
+    </div>
+  {/if}
+
 </div>
 
 <style>
-  .themes-container {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
+  .themes-container { padding: 20px; display: flex; flex-direction: column; align-items: center; max-width: 600px; margin: 0 auto; }
+  .page-title { font-size: 32px; font-weight: 900; color: #ffcc00; -webkit-text-stroke: 2px #222; text-shadow: 4px 4px 0px #222; margin-bottom: 24px; }
 
-  h2 {
-    font-size: 28px;
-    font-weight: 900;
-    color: #222;
-    margin-bottom: 20px;
-    text-shadow: 2px 2px 0px #ffcc00; /* ポップな影 */
-  }
+  /* お題生成エリアのデザイン */
+  .create-section { width: 100%; background-color: #fff; border: 4px solid #222; border-radius: 12px; padding: 20px; box-sizing: border-box; box-shadow: 6px 6px 0px #222; margin-bottom: 32px; display: flex; flex-direction: column; gap: 20px; }
+  
+  .manual-create { display: flex; flex-direction: column; gap: 12px; }
+  .theme-input { width: 100%; box-sizing: border-box; padding: 12px; font-size: 16px; font-weight: bold; border: 3px solid #222; border-radius: 8px; }
+  .theme-input:focus { outline: none; background-color: #ffffee; border-color: #ffcc00; }
+  
+  .ai-create { border-top: 2px dashed #ccc; padding-top: 16px; display: flex; flex-direction: column; align-items: center; }
+  .ai-hint { font-weight: bold; color: #555; margin: 0 0 12px 0; font-size: 14px; }
 
-  .dev-btn {
-    background-color: #ff4742;
-    color: white;
-    font-weight: bold;
-    border: 3px solid #222;
-    padding: 10px 16px;
-    border-radius: 8px;
-    margin-bottom: 24px;
-    cursor: pointer;
-    box-shadow: 4px 4px 0px #222;
-    transition: all 0.1s;
-  }
+  .btn { width: 100%; padding: 14px; font-size: 16px; font-weight: 900; border: 3px solid #222; border-radius: 8px; cursor: pointer; box-shadow: 4px 4px 0px #222; transition: all 0.1s; box-sizing: border-box; text-align: center; }
+  .btn:active:not(:disabled) { transform: translate(4px, 4px); box-shadow: 0px 0px 0px #222; }
+  .btn:disabled { opacity: 0.7; cursor: wait; }
+  
+  .add-btn { background-color: #ffcc00; color: #222; }
+  .ai-btn { background-color: #4285F4; color: #fff; }
 
-  .dev-btn:active {
-    transform: translate(4px, 4px);
-    box-shadow: 0px 0px 0px #222;
-  }
+  /* リストのデザイン */
+  .themes-list { width: 100%; display: flex; flex-direction: column; gap: 16px; margin-bottom: 32px; }
+  .theme-card { text-decoration: none; color: #222; display: flex; align-items: center; background-color: #fff; border: 3px solid #222; border-radius: 12px; padding: 16px; box-shadow: 4px 4px 0px #222; transition: transform 0.1s; }
+  .theme-card:active { transform: translate(4px, 4px); box-shadow: 0px 0px 0px #222; }
+  .theme-icon { font-size: 24px; margin-right: 16px; }
+  .theme-content { font-size: 18px; font-weight: 900; margin: 0; line-height: 1.4; }
+  .empty-text { font-weight: bold; color: #666; text-align: center; }
 
-  .empty-text {
-    color: #666;
-    font-weight: bold;
-  }
-
-  .theme-list {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 16px; /* カード同士の隙間 */
-  }
-
-  /* お題を表示するカードのデザイン（ネオブルータリズム風） */
-  .theme-card {
-    display: flex;
-    align-items: center;
-    background-color: #ffffff;
-    border: 4px solid #222;
-    border-radius: 12px;
-    padding: 16px;
-    text-decoration: none;
-    color: #222;
-    box-shadow: 6px 6px 0px #222;
-    transition: all 0.2s ease;
-  }
-
-  /* タップした時の動き */
-  .theme-card:active {
-    transform: translate(6px, 6px);
-    box-shadow: 0px 0px 0px #222;
-  }
-
-  .card-icon {
-    font-size: 32px;
-    margin-right: 16px;
-  }
-
-  .theme-text {
-    font-size: 16px;
-    font-weight: bold;
-    line-height: 1.5;
-    margin: 0;
-  }
+  /* ページネーションのデザイン */
+  .pagination { display: flex; align-items: center; justify-content: center; gap: 20px; margin-bottom: 40px; }
+  .page-btn { padding: 8px 16px; font-weight: 900; background-color: #fff; border: 3px solid #222; border-radius: 8px; cursor: pointer; box-shadow: 3px 3px 0px #222; transition: all 0.1s; }
+  .page-btn:active:not(:disabled) { transform: translate(3px, 3px); box-shadow: 0px 0px 0px #222; }
+  .page-btn:disabled { background-color: #eee; color: #999; border-color: #ccc; cursor: not-allowed; box-shadow: none; transform: none; }
+  .page-info { font-weight: 900; font-size: 18px; color: #222; }
 </style>
