@@ -5,19 +5,13 @@
 </script>
 
 <div class="app-container">
-  <<main>
-  <slot />
-</main>
+  <main class="content">
+    <slot />
+  </main>
 
-{#if $page.url.pathname !== '/'}
-  <nav class="bottom-nav">
-    <a href="/themes" class="nav-item">お題</a>
-    <a href="/ranking" class="nav-item">ランキング</a>
-    <a href="/mypage" class="nav-item">マイページ</a>
-  </nav>
-{/if}
-
-  <BottomNav />
+  {#if $page.url.pathname !== '/'}
+    <BottomNav />
+  {/if}
 </div>
 
 <style>
