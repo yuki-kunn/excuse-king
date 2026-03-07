@@ -8,12 +8,23 @@
   const themeId = $page.params.themeId;
 
   let theme: any = null;
-  let posts: any[] = [];
+  // ★変更: データベースから取得した「そのままのデータ」を保存する変数
+  let rawPosts: any[] = []; 
   let currentUser: any = null;
   let unsubscribe: () => void;
   let unsubscribeAuth: () => void;
 
-  $: hasPosted = currentUser ? posts.some(post => post.uid === currentUser.uid) : false;
+  // ★追加: 現在の「並び替えのルール」を保存する変数（最初は新着順）
+  let sortBy: 'newest' | 'aiScore' | 'likeCount' = 'newest';
+
+  // ★追加: Svelteの魔法（$:）。sortBy か rawPosts が変化するたびに、自動で並び替えた posts を作ってくれます！
+  $: posts = rawPosts.slice().sort((a, b) => {
+    if (sortBy === 'aiScore') return (b.aiScore || 0) - (a.aiScore || 0); // AI高得点順
+    if (sortBy === 'likeCount') return (b.likeCount || 0) - (a.likeCount || 0); // いいね多い順
+    return (b.createdAt?.toMillis() || 0) - (a.createdAt?.toMillis() || 0); // 新着順（デフォルト）
+  });
+
+  $: hasPosted = currentUser ? rawPosts.some(post => post.uid === currentUser.uid) : false;
 
   onMount(async () => {
     unsubscribeAuth = onAuthStateChanged(auth, (user) => {
@@ -30,19 +41,12 @@
     const q = query(collection(db, 'posts'), where('themeId', '==', themeId));
 
     unsubscribe = onSnapshot(q, (snapshot) => {
-      let loadedPosts = snapshot.docs.map(doc => ({
+      // 取得したデータを rawPosts に入れます（並び替えは上の $: posts が自動でやってくれます）
+      rawPosts = snapshot.docs.map(doc => ({
         id: doc.id,
         ...doc.data(),
         isLikedByMe: false 
       }));
-      
-      loadedPosts.sort((a, b) => {
-        const timeA = a.createdAt?.toMillis() || 0;
-        const timeB = b.createdAt?.toMillis() || 0;
-        return timeB - timeA;
-      });
-      
-      posts = loadedPosts;
     });
   });
 
@@ -62,7 +66,8 @@
 
     post.likeCount = (post.likeCount || 0) + 1;
     post.isLikedByMe = true;
-    posts = [...posts];
+    // ★変更: posts ではなく、元の rawPosts を更新することで、自動的に画面が再描画されます
+    rawPosts = [...rawPosts];
 
     try {
       const likeDocId = `${post.id}_${user.uid}`;
@@ -72,7 +77,7 @@
       if (likeSnap.exists()) {
         post.likeCount -= 1;
         post.isLikedByMe = false;
-        posts = [...posts];
+        rawPosts = [...rawPosts];
         return;
       }
 
@@ -82,20 +87,15 @@
         createdAt: serverTimestamp()
       });
 
-      // ① 投稿の「いいね数」を+1する
       const postRef = doc(db, 'posts', post.id);
       await updateDoc(postRef, {
         likeCount: increment(1)
       });
 
-      // =========================================================
-      // ★追加：② 投稿者（言い訳を作った人）の「所持ポイント」も+1する！
-      // =========================================================
       if (post.uid) {
         const authorRef = doc(db, 'users', post.uid);
         await updateDoc(authorRef, {
           totalPoints: increment(1)
-          // ※称号の再計算は今回は省略しますが、ポイントは確実に増えます
         });
       }
 
@@ -103,7 +103,7 @@
       console.error("いいねエラー:", error);
       post.likeCount -= 1;
       post.isLikedByMe = false;
-      posts = [...posts];
+      rawPosts = [...rawPosts];
     }
   };
 </script>
@@ -131,7 +131,14 @@
   {/if}
 
   <div class="posts-wrapper">
-    <h3 class="section-title">みんなの言い訳</h3>
+    <div class="section-header">
+      <h3 class="section-title">みんなの言い訳</h3>
+      <div class="sort-options">
+        <button class="sort-btn" class:active={sortBy === 'newest'} on:click={() => sortBy = 'newest'}>✨ 新着順</button>
+        <button class="sort-btn" class:active={sortBy === 'aiScore'} on:click={() => sortBy = 'aiScore'}>🤖 AI高得点順</button>
+        <button class="sort-btn" class:active={sortBy === 'likeCount'} on:click={() => sortBy = 'likeCount'}>❤️ いいね順</button>
+      </div>
+    </div>
     
     {#if posts.length === 0}
       <p class="empty-text">まだ言い訳がありません。一番乗りを目指そう！</p>
@@ -170,7 +177,7 @@
 </div>
 
 <style>
-  .post-list-container { padding: 20px; display: flex; flex-direction: column; align-items: center; }
+  .post-list-container { padding: 20px; display: flex; flex-direction: column; align-items: center; max-width: 600px; margin: 0 auto; }
   .back-btn { align-self: flex-start; text-decoration: none; color: #222; font-weight: 900; margin-bottom: 16px; background-color: #fff; border: 3px solid #222; padding: 6px 12px; border-radius: 8px; box-shadow: 3px 3px 0px #222; transition: all 0.1s; }
   .back-btn:active { transform: translate(3px, 3px); box-shadow: 0px 0px 0px #222; }
   .theme-header { background-color: #ffcc00; border: 4px solid #222; border-radius: 12px; padding: 20px; width: 100%; box-sizing: border-box; box-shadow: 6px 6px 0px #222; margin-bottom: 24px; display: flex; align-items: center; gap: 16px; }
@@ -180,22 +187,17 @@
   .post-btn { display: block; width: 100%; box-sizing: border-box; text-align: center; background-color: #ff4742; color: white; text-decoration: none; font-size: 18px; font-weight: 900; padding: 16px; border: 4px solid #222; border-radius: 12px; box-shadow: 6px 6px 0px #222; margin-bottom: 32px; transition: all 0.1s; }
   .post-btn:active { transform: translate(6px, 6px); box-shadow: 0px 0px 0px #222; }
 
-  .posted-message {
-    width: 100%;
-    box-sizing: border-box;
-    text-align: center;
-    background-color: #f0f0f0;
-    color: #666;
-    font-size: 16px;
-    font-weight: 900;
-    padding: 16px;
-    border: 4px dashed #ccc;
-    border-radius: 12px;
-    margin-bottom: 32px;
-  }
+  .posted-message { width: 100%; box-sizing: border-box; text-align: center; background-color: #f0f0f0; color: #666; font-size: 16px; font-weight: 900; padding: 16px; border: 4px dashed #ccc; border-radius: 12px; margin-bottom: 32px; }
 
   .posts-wrapper { width: 100%; }
-  .section-title { font-size: 20px; font-weight: 900; margin-bottom: 16px; text-shadow: 2px 2px 0px #4285F4; color: #222; }
+  
+  /* ★追加：並び替えエリアのデザイン */
+  .section-header { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+  .section-title { font-size: 20px; font-weight: 900; margin: 0; text-shadow: 2px 2px 0px #4285F4; color: #222; }
+  .sort-options { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 8px; }
+  .sort-btn { padding: 6px 12px; border: 2px solid #222; border-radius: 20px; background-color: #fff; font-weight: 900; font-size: 14px; cursor: pointer; color: #222; white-space: nowrap; transition: all 0.1s; }
+  .sort-btn.active { background-color: #222; color: #ffcc00; box-shadow: 3px 3px 0px #ffcc00; transform: translate(-2px, -2px); }
+
   .post-card { background-color: #fff; border: 3px solid #222; border-radius: 12px; padding: 16px; margin-bottom: 16px; box-shadow: 4px 4px 0px #222; }
   .post-header { margin-bottom: 8px; }
   .user-name { font-weight: 900; color: #555; font-size: 14px; }
