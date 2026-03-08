@@ -65,7 +65,7 @@
     if (unsubscribeAuth) unsubscribeAuth();
   });
 
-  const handleDeletePost = async (post: any) => {
+const handleDeletePost = async (post: any) => {
     const confirmMessage = "この言い訳を本当に削除しますか？\n※獲得したポイントも没収されます！";
     if (!confirm(confirmMessage)) return;
 
@@ -73,17 +73,30 @@
       const pointsToDeduct = (post.aiScore || 0) + (post.likeCount || 0);
       const currentPoints = dbUser.totalPoints || 0;
       let newPoints = Math.max(0, currentPoints - pointsToDeduct);
+      
+      // 新しいポイントに基づいて称号を計算（ここで降格も判定されます）
       const newTitle = getTitle(newPoints);
 
-      await updateDoc(doc(db, 'users', currentUser.uid), { totalPoints: newPoints, title: newTitle });
+      // 1. データベースの更新
+      await updateDoc(doc(db, 'users', currentUser.uid), { 
+        totalPoints: newPoints, 
+        title: newTitle 
+      });
       await deleteDoc(doc(db, 'posts', post.id));
 
-      // ★変更：rawPostsから削除して画面を更新
+      // 2. 画面表示の更新
       rawPosts = rawPosts.filter(p => p.id !== post.id);
-      dbUser.totalPoints = newPoints;
-      dbUser.title = newTitle;
+      
+      // =========================================================
+      // ★修正：Svelteが変更を検知できるように、dbUser全体を上書き（再代入）します
+      // =========================================================
+      dbUser = { 
+        ...dbUser, 
+        totalPoints: newPoints, 
+        title: newTitle 
+      };
 
-      alert(`投稿を削除しました。（${pointsToDeduct} pt 減少しました）`);
+      alert(`投稿を削除しました。（${pointsToDeduct} pt 減少しました）\n現在の称号: ${newTitle}`);
     } catch (error) {
       console.error("削除エラー:", error);
       alert("削除に失敗しました。");
