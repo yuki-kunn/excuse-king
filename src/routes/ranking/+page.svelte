@@ -38,7 +38,8 @@
       <p class="loading">ランキングを集計中...</p>
     {:else}
       {#each rankedUsers as user, index}
-        <div class="rank-card" class:top-rank={index < 3}>
+        
+        <a href={`/user/${user.id}`} class="rank-card" class:top-rank={index < 3}>
           
           <div class="rank-badge">
             {#if index === 0}🥇
@@ -58,43 +59,21 @@
             <span class="point-label">pt</span>
           </div>
 
-        </div>
+        </a>
+        
       {/each}
     {/if}
   </div>
 </div>
 
 <style>
-  .ranking-container {
-    padding: 20px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-  }
+  /* 既存のスタイル */
+  .ranking-container { padding: 20px; display: flex; flex-direction: column; align-items: center; max-width: 600px; margin: 0 auto; }
+  .page-title { font-size: 32px; font-weight: 900; color: #ffcc00; -webkit-text-stroke: 2px #222; text-shadow: 4px 4px 0px #222; margin-bottom: 8px; }
+  .subtitle { font-weight: bold; color: #555; margin-bottom: 32px; }
+  .ranking-list { width: 100%; display: flex; flex-direction: column; gap: 16px; }
 
-  .page-title {
-    font-size: 32px;
-    font-weight: 900;
-    color: #ffcc00;
-    -webkit-text-stroke: 2px #222;
-    text-shadow: 4px 4px 0px #222;
-    margin-bottom: 8px;
-  }
-
-  .subtitle {
-    font-weight: bold;
-    color: #555;
-    margin-bottom: 32px;
-  }
-
-  .ranking-list {
-    width: 100%;
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-  }
-
-  /* ランキングカードの基本デザイン */
+  /* ★変更：aタグにしたので、リンクの下線などを消す設定を追加します */
   .rank-card {
     display: flex;
     align-items: center;
@@ -103,62 +82,27 @@
     border-radius: 12px;
     padding: 16px;
     box-shadow: 4px 4px 0px #222;
-    transition: transform 0.2s;
+    transition: transform 0.1s, box-shadow 0.1s;
+    text-decoration: none; /* 下線を消す */
+    color: inherit;        /* 文字色を黒のままにする */
+    cursor: pointer;
+  }
+  
+  /* ★追加：押したときのアニメーション */
+  .rank-card:active {
+    transform: translate(4px, 4px);
+    box-shadow: 0px 0px 0px #222;
   }
 
-  /* トップ3の特別なデザイン（黄色背景で少し大きく） */
-  .rank-card.top-rank {
-    background-color: #ffffee;
-    border-color: #ff4742;
-    transform: scale(1.02);
-    box-shadow: 6px 6px 0px #ff4742;
-  }
+  /* 既存のスタイル */
+  .rank-card.top-rank { background-color: #ffffee; border-color: #ff4742; box-shadow: 6px 6px 0px #ff4742; }
+  .rank-card.top-rank:active { box-shadow: 0px 0px 0px #ff4742; }
 
-  .rank-badge {
-    font-size: 24px;
-    font-weight: 900;
-    width: 40px;
-    text-align: center;
-    margin-right: 16px;
-    color: #222;
-  }
-
-  .user-info {
-    flex-grow: 1;
-    display: flex;
-    flex-direction: column;
-  }
-
-  .user-title {
-    font-size: 12px;
-    font-weight: 900;
-    color: #ff4742;
-    background-color: #ffeeee;
-    padding: 2px 8px;
-    border-radius: 12px;
-    align-self: flex-start;
-    margin-bottom: 4px;
-  }
-
-  .user-name {
-    font-size: 18px;
-    font-weight: 900;
-    color: #222;
-  }
-
-  .point-display {
-    text-align: right;
-  }
-
-  .point-number {
-    font-size: 24px;
-    font-weight: 900;
-    color: #222;
-  }
-
-  .point-label {
-    font-size: 14px;
-    font-weight: bold;
-    color: #666;
-  }
+  .rank-badge { font-size: 24px; font-weight: 900; width: 40px; text-align: center; margin-right: 16px; color: #222; }
+  .user-info { flex-grow: 1; display: flex; flex-direction: column; }
+  .user-title { font-size: 12px; font-weight: 900; color: #ff4742; background-color: #ffeeee; padding: 2px 8px; border-radius: 12px; align-self: flex-start; margin-bottom: 4px; }
+  .user-name { font-size: 18px; font-weight: 900; color: #222; }
+  .point-display { text-align: right; }
+  .point-number { font-size: 24px; font-weight: 900; color: #222; }
+  .point-label { font-size: 14px; font-weight: bold; color: #666; }
 </style>
