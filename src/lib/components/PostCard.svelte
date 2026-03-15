@@ -11,12 +11,35 @@
 
 	let { post, showTheme = false, showDelete = false, onLike, onDelete }: Props = $props();
 
+	let isExpanded = $state(false);
+
 	const themeContent = $derived(
 		'themeContent' in post ? (post as PostWithTheme).themeContent : undefined
 	);
+
+	function toggleExpand() {
+		if (showTheme) {
+			isExpanded = !isExpanded;
+		}
+	}
+
+	function handleKeyPress(event: KeyboardEvent) {
+		if (showTheme && (event.key === 'Enter' || event.key === ' ')) {
+			event.preventDefault();
+			toggleExpand();
+		}
+	}
 </script>
 
-<div class="post-card">
+<!-- svelte-ignore a11y_no_noninteractive_tabindex -->
+<div
+	class="post-card"
+	class:clickable={showTheme}
+	role={showTheme ? 'button' : undefined}
+	tabindex={showTheme ? 0 : undefined}
+	onclick={toggleExpand}
+	onkeypress={handleKeyPress}
+>
 	{#if showTheme && themeContent}
 		<div class="theme-label">お題: {themeContent}</div>
 	{:else}
@@ -43,19 +66,46 @@
 			<button
 				class="like-btn"
 				class:liked={post.isLikedByMe}
-				onclick={() => onLike?.(post)}
+				onclick={(e) => {
+					e.stopPropagation();
+					onLike?.(post);
+				}}
 			>
 				{post.isLikedByMe ? '❤️' : '🤍'} {post.likeCount || 0}
 			</button>
 		{/if}
 
 		{#if showDelete && onDelete}
-			<button class="delete-post-btn" onclick={() => onDelete?.(post)}>🗑️ 削除</button>
+			<button
+				class="delete-post-btn"
+				onclick={(e) => {
+					e.stopPropagation();
+					onDelete?.(post);
+				}}
+			>
+				🗑️ 削除
+			</button>
+		{/if}
+
+		{#if showTheme}
+			<button
+				class="expand-btn"
+				onclick={(e) => {
+					e.stopPropagation();
+					toggleExpand();
+				}}
+			>
+				{isExpanded ? '▲ 閉じる' : '▼ AIの返答を見る'}
+			</button>
 		{/if}
 	</div>
 
-	{#if post.aiComment && !showTheme}
-		<div class="ai-comment-box">🤖「{post.aiComment}」</div>
+	{#if post.aiComment}
+		{#if !showTheme || isExpanded}
+			<div class="ai-comment-box" class:expanded={isExpanded}>
+				🤖「{post.aiComment}」
+			</div>
+		{/if}
 	{/if}
 </div>
 
@@ -66,6 +116,21 @@
 		border-radius: 12px;
 		padding: 16px;
 		box-shadow: 4px 4px 0px #222;
+		transition: all 0.2s;
+	}
+
+	.post-card.clickable {
+		cursor: pointer;
+	}
+
+	.post-card.clickable:hover {
+		transform: translate(-2px, -2px);
+		box-shadow: 6px 6px 0px #222;
+	}
+
+	.post-card.clickable:active {
+		transform: translate(2px, 2px);
+		box-shadow: 2px 2px 0px #222;
 	}
 
 	.theme-label {
@@ -180,5 +245,43 @@
 		font-size: 14px;
 		color: #333;
 		margin-top: 12px;
+	}
+
+	.ai-comment-box.expanded {
+		animation: slideDown 0.3s ease-out;
+	}
+
+	@keyframes slideDown {
+		from {
+			opacity: 0;
+			max-height: 0;
+			padding: 0 10px;
+		}
+		to {
+			opacity: 1;
+			max-height: 200px;
+			padding: 10px;
+		}
+	}
+
+	.expand-btn {
+		background-color: #fff;
+		color: #4285f4;
+		border: 2px solid #4285f4;
+		font-weight: 900;
+		font-size: 12px;
+		padding: 4px 12px;
+		border-radius: 8px;
+		cursor: pointer;
+		transition: all 0.1s;
+		white-space: nowrap;
+	}
+
+	.expand-btn:hover {
+		background-color: #e3f2fd;
+	}
+
+	.expand-btn:active {
+		transform: scale(0.95);
 	}
 </style>
