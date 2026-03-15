@@ -2,14 +2,15 @@
   // 先ほど作ったコンポーネントを読み込みます
   import BottomNav from '$lib/components/BottomNav.svelte';
   import { page } from '$app/stores';
+  $: isAdmin = $page.url.pathname.startsWith('/admin');
 </script>
 
-<div class="app-container">
-  <main class="content">
+<div class={isAdmin ? 'admin-wrapper' : 'app-container'}>
+  <main class={isAdmin ? '' : 'content'}>
     <slot />
   </main>
 
-  {#if $page.url.pathname !== '/'}
+  {#if !isAdmin && $page.url.pathname !== '/'}
     <BottomNav />
   {/if}
 </div>
@@ -38,5 +39,10 @@
     padding-bottom: 80px; /* ナビゲーションバーの分の余白 */
     min-height: 100vh;
     box-sizing: border-box;
+  }
+  .admin-wrapper {
+    width: 100%;
+    min-height: 100vh;
+    background-color: #f8fafc; /* 管理画面のモダンな背景色 */
   }
 </style>
