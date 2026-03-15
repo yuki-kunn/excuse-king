@@ -25,16 +25,24 @@
 			}
 
 			// ユーザー情報と投稿を並列で取得（パフォーマンス最適化）
-			const [userSnap, posts] = await Promise.all([
+			const [userSnap, postsResult] = await Promise.all([
 				getDoc(doc(db, 'users', targetUserId)),
 				fetchUserPostsWithThemes(db, targetUserId)
 			]);
 
 			if (userSnap.exists()) {
 				targetUser = userSnap.data() as User;
+
+				// 削除された投稿があった場合、最新のポイントと称号を反映
+				if (postsResult.deletedCount > 0 && postsResult.newTitle) {
+					targetUser = {
+						...targetUser,
+						title: postsResult.newTitle
+					};
+				}
 			}
 
-			rawPosts = posts;
+			rawPosts = postsResult.posts;
 		} catch (error) {
 			console.error('プロフィール読み込みエラー:', error);
 		} finally {

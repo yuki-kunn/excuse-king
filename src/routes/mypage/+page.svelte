@@ -2,12 +2,12 @@
 	import { goto } from '$app/navigation';
 	import { db, auth } from '$lib/firebase/firebase';
 	import { onAuthStateChanged } from 'firebase/auth';
-	import { doc, getDoc, deleteDoc, updateDoc } from 'firebase/firestore';
+	import { doc, getDoc } from 'firebase/firestore';
 	import { onMount, onDestroy } from 'svelte';
 	import SortButtons from '$lib/components/SortButtons.svelte';
 	import PostCard from '$lib/components/PostCard.svelte';
 	import LoadingSpinner from '$lib/components/LoadingSpinner.svelte';
-	import { fetchUserPostsWithThemes, sortPosts, getTitle } from '$lib/utils';
+	import { fetchUserPostsWithThemes, sortPosts, deletePostWithCleanup } from '$lib/utils';
 	import type { User, PostWithId, PostWithTheme, SortType } from '$lib/types';
 	import type { User as FirebaseUser } from 'firebase/auth';
 
@@ -26,7 +26,7 @@
 				currentUser = user;
 
 				// ユーザー情報と投稿を並列で取得（パフォーマンス最適化）
-				const [userSnap, posts] = await Promise.all([
+				const [userSnap, postsResult] = await Promise.all([
 					getDoc(doc(db, 'users', user.uid)),
 					fetchUserPostsWithThemes(db, user.uid)
 				]);
@@ -35,7 +35,27 @@
 					dbUser = userSnap.data() as User;
 				}
 
-				rawPosts = posts;
+				rawPosts = postsResult.posts;
+
+				// 削除された投稿がある場合、ユーザーに通知
+				if (postsResult.deletedCount > 0 && dbUser) {
+					// UIを更新（ポイントと称号を反映）
+					dbUser = {
+						...dbUser,
+						totalPoints: Math.max(0, (dbUser.totalPoints || 0)),
+						title: postsResult.newTitle || dbUser.title
+					};
+
+					// 通知を表示
+					setTimeout(() => {
+						alert(
+							`お題が削除されていた投稿が${postsResult.deletedCount}件見つかりました。\n` +
+								`${postsResult.pointsDeducted}pt減少しました。\n` +
+								`現在の称号: ${postsResult.newTitle || dbUser?.title}`
+						);
+					}, 500);
+				}
+
 				isLoading = false;
 			} else {
 				goto('/');
@@ -49,7 +69,7 @@
 
 	async function handleDeletePost(post: PostWithId | PostWithTheme) {
 		const confirmMessage =
-			'この言い訳を本当に削除しますか？\n※獲得したポイントも没収されます！';
+			'この言い訳を本当に削除しますか？\n※獲得したポイントと関連するいいねもすべて削除されます！';
 		if (!confirm(confirmMessage)) return;
 
 		if (!currentUser || !dbUser) return;
@@ -57,17 +77,14 @@
 		try {
 			const pointsToDeduct = (post.aiScore || 0) + (post.likeCount || 0);
 			const currentPoints = dbUser.totalPoints || 0;
-			const newPoints = Math.max(0, currentPoints - pointsToDeduct);
-			const newTitle = getTitle(newPoints);
 
-			// データベースの更新を並列実行（パフォーマンス最適化）
-			await Promise.all([
-				updateDoc(doc(db, 'users', currentUser.uid), {
-					totalPoints: newPoints,
-					title: newTitle
-				}),
-				deleteDoc(doc(db, 'posts', post.id))
-			]);
+			// 投稿と関連データをすべて削除（いいねも含む）
+			const { newPoints, newTitle } = await deletePostWithCleanup(
+				db,
+				post,
+				currentUser.uid,
+				currentPoints
+			);
 
 			// UI更新
 			rawPosts = rawPosts.filter((p) => p.id !== post.id);
@@ -77,7 +94,11 @@
 				title: newTitle
 			};
 
-			alert(`投稿を削除しました。（${pointsToDeduct} pt 減少しました）\n現在の称号: ${newTitle}`);
+			const likeCount = post.likeCount || 0;
+			const likeMessage = likeCount > 0 ? `\n※${likeCount}件のいいねも削除されました` : '';
+			alert(
+				`投稿を削除しました。（${pointsToDeduct} pt 減少しました）\n現在の称号: ${newTitle}${likeMessage}`
+			);
 		} catch (error) {
 			console.error('削除エラー:', error);
 			alert('削除に失敗しました。');
