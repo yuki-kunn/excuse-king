@@ -1,32 +1,34 @@
 <script lang="ts">
-  import { db } from '$lib/firebase/firebase';
-  // Firestoreから「ポイント順」に並び替えて取得する機能を読み込みます
-  import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
-  import { onMount, onDestroy } from 'svelte';
+	import { db } from '$lib/firebase/firebase';
+	import { collection, query, orderBy, limit, onSnapshot } from 'firebase/firestore';
+	import { onMount, onDestroy } from 'svelte';
+	import { PAGINATION } from '$lib/constants/gameConstants';
+	import type { UserWithId } from '$lib/types';
 
-  let rankedUsers: any[] = [];
-  let unsubscribe: () => void;
+	let rankedUsers: UserWithId[] = [];
+	let unsubscribe: (() => void) | undefined;
 
-  onMount(() => {
-    // データベースの 'users' コレクションから、'totalPoints' が多い順にトップ50人を取得する設定
-    const q = query(
-      collection(db, 'users'), 
-      orderBy('totalPoints', 'desc'), 
-      limit(50)
-    );
+	onMount(() => {
+		const q = query(
+			collection(db, 'users'),
+			orderBy('totalPoints', 'desc'),
+			limit(PAGINATION.RANKING_LIMIT)
+		);
 
-    // リアルタイムで監視（誰かのポイントが上がったら、自動でランキングが入れ替わります！）
-    unsubscribe = onSnapshot(q, (snapshot) => {
-      rankedUsers = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    });
-  });
+		unsubscribe = onSnapshot(q, (snapshot) => {
+			rankedUsers = snapshot.docs.map(
+				(doc) =>
+					({
+						id: doc.id,
+						...doc.data()
+					}) as UserWithId
+			);
+		});
+	});
 
-  onDestroy(() => {
-    if (unsubscribe) unsubscribe();
-  });
+	onDestroy(() => {
+		if (unsubscribe) unsubscribe();
+	});
 </script>
 
 <div class="ranking-container">

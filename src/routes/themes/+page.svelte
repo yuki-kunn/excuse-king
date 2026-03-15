@@ -1,104 +1,99 @@
 <script lang="ts">
-  import { db, auth } from '$lib/firebase/firebase';
-  import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
-  import { onMount, onDestroy } from 'svelte';
+	import { db, auth } from '$lib/firebase/firebase';
+	import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+	import { onMount, onDestroy } from 'svelte';
+	import { PAGINATION } from '$lib/constants/gameConstants';
+	import type { ThemeWithId } from '$lib/types';
 
-  let themes: any[] = [];
-  let unsubscribe: () => void;
+	let themes: ThemeWithId[] = [];
+	let unsubscribe: (() => void) | undefined;
+	let manualThemeText = '';
+	let isAddingManual = false;
+	let isGeneratingAI = false;
+	let currentPage = 1;
 
-  // 手動追加用
-  let manualThemeText = "";
-  let isAddingManual = false;
+	const itemsPerPage = PAGINATION.THEMES_PER_PAGE;
 
-  // AI自動生成用
-  let isGeneratingAI = false;
+	$: totalPages = Math.max(1, Math.ceil(themes.length / itemsPerPage));
+	$: paginatedThemes = themes.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
 
-  // ページネーション用設定
-  let currentPage = 1;
-  const itemsPerPage = 20;
+	onMount(() => {
+		const q = query(collection(db, 'themes'), orderBy('createdAt', 'desc'));
+		unsubscribe = onSnapshot(q, (snapshot) => {
+			themes = snapshot.docs.map(
+				(doc) =>
+					({
+						id: doc.id,
+						...doc.data()
+					}) as ThemeWithId
+			);
+		});
+	});
 
-  // Svelteの強力な機能。ページ番号が変わるたびに、自動で20件分だけを切り取ってくれます
-  $: totalPages = Math.max(1, Math.ceil(themes.length / itemsPerPage));
-  $: paginatedThemes = themes.slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage);
+	onDestroy(() => {
+		if (unsubscribe) unsubscribe();
+	});
 
-  onMount(() => {
-    // 新しいお題が上に来るように 'desc' で取得します
-    const q = query(collection(db, 'themes'), orderBy('createdAt', 'desc'));
-    unsubscribe = onSnapshot(q, (snapshot) => {
-      themes = snapshot.docs.map(doc => ({
-        id: doc.id,
-        ...doc.data()
-      }));
-    });
-  });
+	async function handleManualAdd() {
+		if (!manualThemeText.trim()) {
+			alert('お題を入力してください！');
+			return;
+		}
+		const user = auth.currentUser;
+		if (!user) {
+			alert('お題を追加するにはログインが必要です。');
+			return;
+		}
 
-  onDestroy(() => {
-    if (unsubscribe) unsubscribe();
-  });
+		isAddingManual = true;
+		try {
+			await addDoc(collection(db, 'themes'), {
+				content: manualThemeText,
+				createdAt: serverTimestamp(),
+				createdBy: user.uid
+			});
+			manualThemeText = '';
+			currentPage = 1;
+		} catch (error) {
+			console.error('手動追加エラー:', error);
+			alert('お題の追加に失敗しました。');
+		}
+		isAddingManual = false;
+	}
 
-  // 1. 手動でお題を追加
-  const handleManualAdd = async () => {
-    if (!manualThemeText.trim()) {
-      alert("お題を入力してください！");
-      return;
-    }
-    const user = auth.currentUser;
-    if (!user) {
-      alert("お題を追加するにはログインが必要です。");
-      return;
-    }
+	async function handleAIGenerate() {
+		const user = auth.currentUser;
+		if (!user) {
+			alert('お題を生成するにはログインが必要です。');
+			return;
+		}
 
-    isAddingManual = true;
-    try {
-      await addDoc(collection(db, 'themes'), {
-        content: manualThemeText,
-        createdAt: serverTimestamp(),
-        createdBy: user.uid
-      });
-      manualThemeText = "";
-      currentPage = 1; // 追加したら最新が見えるように1ページ目に戻す
-    } catch (error) {
-      console.error("手動追加エラー:", error);
-      alert("お題の追加に失敗しました。");
-    }
-    isAddingManual = false;
-  };
+		isGeneratingAI = true;
+		try {
+			const response = await fetch('/api/generateTheme', { method: 'POST' });
+			if (!response.ok) throw new Error('APIエラー');
 
-  // 2. AIにお題を自動生成させる
-  const handleAIGenerate = async () => {
-    const user = auth.currentUser;
-    if (!user) {
-      alert("お題を生成するにはログインが必要です。");
-      return;
-    }
+			const data = await response.json();
 
-    isGeneratingAI = true;
-    try {
-      const response = await fetch('/api/generateTheme', { method: 'POST' });
-      if (!response.ok) throw new Error("APIエラー");
-      
-      const data = await response.json();
-      
-      await addDoc(collection(db, 'themes'), {
-        content: data.themeText,
-        createdAt: serverTimestamp(),
-        createdBy: 'AI' // AIが作った印
-      });
-      currentPage = 1;
-    } catch (error) {
-      console.error("AI生成エラー:", error);
-      alert("AIお題の生成に失敗しました。");
-    }
-    isGeneratingAI = false;
-  };
+			await addDoc(collection(db, 'themes'), {
+				content: data.themeText,
+				createdAt: serverTimestamp(),
+				createdBy: 'AI'
+			});
+			currentPage = 1;
+		} catch (error) {
+			console.error('AI生成エラー:', error);
+			alert('AIお題の生成に失敗しました。');
+		}
+		isGeneratingAI = false;
+	}
 
-  // ページ移動処理（移動した時に画面の一番上にスクロールさせます）
-  const goToPage = (page: number) => {
-    if (page >= 1 && page <= totalPages) {
-      currentPage = page;
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    }
-  };
+	function goToPage(page: number) {
+		if (page >= 1 && page <= totalPages) {
+			currentPage = page;
+			window.scrollTo({ top: 0, behavior: 'smooth' });
+		}
+	}
 </script>
 
 <div class="themes-container">

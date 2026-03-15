@@ -1,128 +1,102 @@
 <script lang="ts">
-  import { goto } from '$app/navigation';
-  import { db, auth } from '$lib/firebase/firebase';
-  // ★追加: updateDoc, increment をインポート
-  import { doc, getDoc, collection, addDoc, serverTimestamp, query, where, getDocs, updateDoc, increment } from 'firebase/firestore';
+	import { goto } from '$app/navigation';
+	import { db, auth } from '$lib/firebase/firebase';
+	import {
+		doc,
+		getDoc,
+		collection,
+		addDoc,
+		serverTimestamp,
+		updateDoc,
+		increment
+	} from 'firebase/firestore';
+	import { hasUserPosted, getTitle } from '$lib/utils';
+	import type { ThemeWithId } from '$lib/types';
 
-  export let data: any;
-  const theme = data.theme;
-  const themeId = theme.id;
+	export let data: { theme: ThemeWithId };
+	const theme = data.theme;
+	const themeId = theme.id;
 
-  let excuseText = "";
-  let isSubmitting = false;
-  let aiResult: { score: number, comment: string } | null = null;
+	let excuseText = '';
+	let isSubmitting = false;
+	let aiResult: { score: number; comment: string } | null = null;
 
-  // ★追加：ポイントに応じた称号を計算する関数
-  const getTitle = (points: number) => {
-    if (points >= 100) return "言い訳の神";
-    if (points >= 50) return "言い訳の達人";
-    if (points >= 20) return "言い訳のプロ";
-    return "見習い";
-  };
+	$: shareText = aiResult
+		? `お題「${theme.content}」に対する私の言い訳\n\n「${excuseText}」\n\nAI判定: ${aiResult.score}点\n🤖「${aiResult.comment}」\n\n#言い訳の王様`
+		: '';
+	$: shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`;
 
-  const submitExcuse = async () => {
-    if (!excuseText.trim()) {
-      alert("言い訳を入力してください！");
-      return;
-    }
-    
-    const user = auth.currentUser;
-    if (!user) {
-      alert("投稿するにはログインが必要です。");
-      return;
-    }
+	async function submitExcuse() {
+		if (!excuseText.trim()) {
+			alert('言い訳を入力してください！');
+			return;
+		}
 
-    isSubmitting = true;
+		const user = auth.currentUser;
+		if (!user) {
+			alert('投稿するにはログインが必要です。');
+			return;
+		}
 
-    // 重複チェック
-    try {
-      const duplicateQuery = query(
-        collection(db, 'posts'),
-        where('themeId', '==', themeId),
-        where('uid', '==', user.uid)
-      );
-      const duplicateSnap = await getDocs(duplicateQuery);
+		isSubmitting = true;
 
-      if (!duplicateSnap.empty) {
-        alert("このお題にはすでに言い訳を投稿済みです！（1お題につき1回まで）");
-        isSubmitting = false;
-        return;
-      }
-    } catch (checkError) {
-      console.error("重複チェックエラー:", checkError);
-    }
+		try {
+			// 重複チェック
+			const alreadyPosted = await hasUserPosted(db, themeId, user.uid);
+			if (alreadyPosted) {
+				alert('このお題にはすでに言い訳を投稿済みです！（1お題につき1回まで）');
+				isSubmitting = false;
+				return;
+			}
 
-    try {
-      // AI判定
-      const aiResponse = await fetch('/api/evaluate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          themeText: theme.content,
-          excuseText: excuseText
-        })
-      });
+			// AI判定とユーザー情報取得を並列実行（パフォーマンス最適化）
+			const [aiResponse, userSnap] = await Promise.all([
+				fetch('/api/evaluate', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({
+						themeText: theme.content,
+						excuseText: excuseText
+					})
+				}),
+				getDoc(doc(db, 'users', user.uid))
+			]);
 
-      if (!aiResponse.ok) throw new Error("AIエラー");
-      
-      const evaluation = await aiResponse.json();
-      
-      aiResult = evaluation;
-      isSubmitting = false;
+			if (!aiResponse.ok) throw new Error('AIエラー');
 
-      // ユーザー名の取得と、現在のポイント取得
-      let customName = "名無し";
-      let currentPoints = 0;
-      try {
-        const userRef = doc(db, 'users', user.uid);
-        const userSnap = await getDoc(userRef);
-        if (userSnap.exists()) {
-          customName = userSnap.data().name;
-          currentPoints = userSnap.data().totalPoints || 0;
-        }
-      } catch (e) {
-        console.error("ユーザー情報の取得に失敗しました:", e);
-      }
+			const evaluation = await aiResponse.json();
+			aiResult = evaluation;
+			isSubmitting = false;
 
-      // データベースに投稿を保存
-      try {
-        await addDoc(collection(db, 'posts'), {
-          themeId: themeId,
-          uid: user.uid,
-          userId: customName,
-          excuseText: excuseText,
-          aiScore: evaluation.score,
-          aiComment: evaluation.comment,
-          likeCount: 0,
-          createdAt: serverTimestamp()
-        });
+			const customName = userSnap.exists() ? userSnap.data().name : '名無し';
+			const currentPoints = userSnap.exists() ? userSnap.data().totalPoints || 0 : 0;
 
-        // =========================================================
-        // ★追加：ユーザーの所持ポイントにAIの点数を足し、称号を更新する！
-        // =========================================================
-        const newPoints = currentPoints + evaluation.score;
-        const newTitle = getTitle(newPoints);
-        
-        await updateDoc(doc(db, 'users', user.uid), {
-          totalPoints: increment(evaluation.score),
-          title: newTitle
-        });
+			// 投稿保存とポイント更新を並列実行（パフォーマンス最適化）
+			const newPoints = currentPoints + evaluation.score;
+			const newTitle = getTitle(newPoints);
 
-      } catch (dbError) {
-        console.error("データベース保存エラー:", dbError);
-      }
-
-    } catch (error) {
-      console.error("投稿エラー:", error);
-      alert("エラーが発生しました。もう一度お試しください。");
-      isSubmitting = false;
-    }
-  };
-
-  $: shareText = aiResult 
-    ? `お題「${theme.content}」に対する私の言い訳\n\n「${excuseText}」\n\nAI判定: ${aiResult.score}点\n🤖「${aiResult.comment}」\n\n#言い訳の王様`
-    : "";
-  $: shareUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`;
+			await Promise.all([
+				addDoc(collection(db, 'posts'), {
+					themeId: themeId,
+					uid: user.uid,
+					userId: customName,
+					excuseText: excuseText,
+					aiScore: evaluation.score,
+					aiComment: evaluation.comment,
+					likeCount: 0,
+					createdAt: serverTimestamp()
+				}),
+				updateDoc(doc(db, 'users', user.uid), {
+					totalPoints: increment(evaluation.score),
+					title: newTitle
+				})
+			]);
+		} catch (error) {
+			console.error('投稿エラー:', error);
+			alert('エラーが発生しました。もう一度お試しください。');
+			isSubmitting = false;
+		}
+	}
 </script>
 
 <div class="post-container">
