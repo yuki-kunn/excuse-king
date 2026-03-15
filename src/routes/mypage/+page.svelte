@@ -2,7 +2,7 @@
 	import { goto } from '$app/navigation';
 	import { db, auth } from '$lib/firebase/firebase';
 	import { onAuthStateChanged } from 'firebase/auth';
-	import { doc, getDoc } from 'firebase/firestore';
+	import { doc, getDoc, setDoc, updateDoc, increment, serverTimestamp } from 'firebase/firestore';
 	import { onMount, onDestroy } from 'svelte';
 	import SortButtons from '$lib/components/SortButtons.svelte';
 	import PostCard from '$lib/components/PostCard.svelte';

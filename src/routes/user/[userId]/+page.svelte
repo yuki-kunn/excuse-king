@@ -1,13 +1,20 @@
 <script lang="ts">
 	import { page } from '$app/stores';
-	import { db } from '$lib/firebase/firebase';
-	import { doc, getDoc } from 'firebase/firestore';
+	import { db, auth } from '$lib/firebase/firebase';
+	import {
+		doc,
+		getDoc,
+		setDoc,
+		updateDoc,
+		increment,
+		serverTimestamp
+	} from 'firebase/firestore';
 	import { onMount } from 'svelte';
 	import SortButtons from '$lib/components/SortButtons.svelte';
 	import PostCard from '$lib/components/PostCard.svelte';
 	import LoadingSpinner from '$lib/components/LoadingSpinner.svelte';
 	import { fetchUserPostsWithThemes, sortPosts } from '$lib/utils';
-	import type { User, PostWithTheme, SortType } from '$lib/types';
+	import type { User, PostWithTheme, SortType, PostWithId } from '$lib/types';
 
 	const targetUserId = $page.params.userId;
 	let targetUser: User | null = null;
@@ -53,6 +60,72 @@
 	function handleSortChange(newSortBy: SortType) {
 		sortBy = newSortBy;
 	}
+
+	async function handleLike(post: PostWithId | PostWithTheme) {
+		const user = auth.currentUser;
+		if (!user) {
+			alert('いいねするにはログインが必要です！');
+			return;
+		}
+
+		// 自分の投稿にはいいねできない
+		if (post.uid === user.uid) {
+			alert('自分の投稿にはいいねできません！');
+			return;
+		}
+
+		if (post.isLikedByMe) return;
+
+		// 楽観的UI更新
+		const postIndex = rawPosts.findIndex((p) => p.id === post.id);
+		if (postIndex !== -1) {
+			rawPosts[postIndex].likeCount = (rawPosts[postIndex].likeCount || 0) + 1;
+			rawPosts[postIndex].isLikedByMe = true;
+			rawPosts = [...rawPosts];
+		}
+
+		try {
+			const likeDocId = `${post.id}_${user.uid}`;
+			const likeRef = doc(db, 'likes', likeDocId);
+
+			const likeSnap = await getDoc(likeRef);
+			if (likeSnap.exists()) {
+				// すでにいいね済み（ロールバック）
+				if (postIndex !== -1) {
+					rawPosts[postIndex].likeCount -= 1;
+					rawPosts[postIndex].isLikedByMe = false;
+					rawPosts = [...rawPosts];
+				}
+				return;
+			}
+
+			await setDoc(likeRef, {
+				postId: post.id,
+				userId: user.uid,
+				createdAt: serverTimestamp()
+			});
+
+			const postRef = doc(db, 'posts', post.id);
+			await updateDoc(postRef, {
+				likeCount: increment(1)
+			});
+
+			if (post.uid) {
+				const authorRef = doc(db, 'users', post.uid);
+				await updateDoc(authorRef, {
+					totalPoints: increment(1)
+				});
+			}
+		} catch (error) {
+			console.error('いいねエラー:', error);
+			// エラー時にロールバック
+			if (postIndex !== -1) {
+				rawPosts[postIndex].likeCount -= 1;
+				rawPosts[postIndex].isLikedByMe = false;
+				rawPosts = [...rawPosts];
+			}
+		}
+	}
 </script>
 
 <div class="user-profile-container">
@@ -88,7 +161,7 @@
 			{:else}
 				<div class="posts-list">
 					{#each userPosts as post (post.id)}
-						<PostCard {post} showTheme={true} />
+						<PostCard {post} showTheme={true} onLike={handleLike} />
 					{/each}
 				</div>
 			{/if}

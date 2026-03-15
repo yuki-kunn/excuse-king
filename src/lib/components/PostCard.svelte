@@ -62,42 +62,44 @@
 			<span class="like-badge">❤️ {post.likeCount || 0}</span>
 		</div>
 
-		{#if onLike && !showDelete}
-			<button
-				class="like-btn"
-				class:liked={post.isLikedByMe}
-				onclick={(e) => {
-					e.stopPropagation();
-					onLike?.(post);
-				}}
-			>
-				{post.isLikedByMe ? '❤️' : '🤍'} {post.likeCount || 0}
-			</button>
-		{/if}
+		<div class="action-buttons">
+			{#if onLike && !showDelete}
+				<button
+					class="like-btn"
+					class:liked={post.isLikedByMe}
+					onclick={(e) => {
+						e.stopPropagation();
+						onLike?.(post);
+					}}
+				>
+					{post.isLikedByMe ? '❤️' : '🤍'} {post.likeCount || 0}
+				</button>
+			{/if}
 
-		{#if showDelete && onDelete}
-			<button
-				class="delete-post-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					onDelete?.(post);
-				}}
-			>
-				🗑️ 削除
-			</button>
-		{/if}
+			{#if showDelete && onDelete}
+				<button
+					class="delete-post-btn"
+					onclick={(e) => {
+						e.stopPropagation();
+						onDelete?.(post);
+					}}
+				>
+					🗑️ 削除
+				</button>
+			{/if}
 
-		{#if showTheme}
-			<button
-				class="expand-btn"
-				onclick={(e) => {
-					e.stopPropagation();
-					toggleExpand();
-				}}
-			>
-				{isExpanded ? '▲ 閉じる' : '▼ AIの返答を見る'}
-			</button>
-		{/if}
+			{#if showTheme}
+				<button
+					class="expand-btn"
+					onclick={(e) => {
+						e.stopPropagation();
+						toggleExpand();
+					}}
+				>
+					{isExpanded ? '▲ 閉じる' : '▼ AIの返答を見る'}
+				</button>
+			{/if}
+		</div>
 	</div>
 
 	{#if post.aiComment}
@@ -167,6 +169,15 @@
 		justify-content: space-between;
 		align-items: center;
 		margin-top: 12px;
+		flex-wrap: wrap;
+		gap: 8px;
+	}
+
+	.action-buttons {
+		display: flex;
+		gap: 8px;
+		flex-wrap: wrap;
+		align-items: center;
 	}
 
 	.post-stats {
