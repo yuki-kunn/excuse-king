@@ -41,6 +41,17 @@
 		isSubmitting = true;
 
 		try {
+			// BANチェック
+			const userDocRef = doc(db, 'users', user.uid);
+			const userSnap = await getDoc(userDocRef);
+			const dbUser = userSnap.data();
+
+			if (dbUser?.isBanned) {
+				alert("アカウントが凍結されているため、言い訳を投稿できません🚨");
+				isSubmitting = false;
+				return;
+			}
+
 			// 重複チェック
 			const alreadyPosted = await hasUserPosted(db, themeId, user.uid);
 			if (alreadyPosted) {
@@ -49,18 +60,15 @@
 				return;
 			}
 
-			// AI判定とユーザー情報取得を並列実行（パフォーマンス最適化）
-			const [aiResponse, userSnap] = await Promise.all([
-				fetch('/api/evaluate', {
-					method: 'POST',
-					headers: { 'Content-Type': 'application/json' },
-					body: JSON.stringify({
-						themeText: theme.content,
-						excuseText: excuseText
-					})
-				}),
-				getDoc(doc(db, 'users', user.uid))
-			]);
+			// AI判定
+			const aiResponse = await fetch('/api/evaluate', {
+				method: 'POST',
+				headers: { 'Content-Type': 'application/json' },
+				body: JSON.stringify({
+					themeText: theme.content,
+					excuseText: excuseText
+				})
+			});
 
 			if (!aiResponse.ok) throw new Error('AIエラー');
 
@@ -68,8 +76,8 @@
 			aiResult = evaluation;
 			isSubmitting = false;
 
-			const customName = userSnap.exists() ? userSnap.data().name : '名無し';
-			const currentPoints = userSnap.exists() ? userSnap.data().totalPoints || 0 : 0;
+			const customName = dbUser?.name || '名無し';
+			const currentPoints = dbUser?.totalPoints || 0;
 
 			// 投稿保存とポイント更新を並列実行（パフォーマンス最適化）
 			const newPoints = currentPoints + evaluation.score;

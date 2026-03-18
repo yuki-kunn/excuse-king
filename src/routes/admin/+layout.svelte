@@ -5,6 +5,8 @@
   import { onAuthStateChanged } from 'firebase/auth';
   import { onMount, onDestroy } from 'svelte';
 
+  export let data: { isAuthenticated?: boolean; user?: { email: string; uid: string } };
+
   const ADMIN_EMAIL = "hokuyoyuki@gmail.com";
   let isAuthorized = false;
   let isLoading = true;
@@ -14,11 +16,29 @@
   let isSidebarOpen = false;
 
   onMount(() => {
-    unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+    // サーバー側で既に認証済みの場合
+    if (data?.isAuthenticated && data?.user) {
+      console.log('[Client] サーバー側で認証済み:', data.user.email);
+      isAuthorized = true;
+      isLoading = false;
+    }
+
+    unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
       if (user && user.email === ADMIN_EMAIL) {
         isAuthorized = true;
+        // サーバーサイド認証のためにトークンをCookieに保存
+        try {
+          const token = await user.getIdToken();
+          document.cookie = `adminToken=${token}; path=/admin; max-age=3600; SameSite=Strict`;
+          console.log('[Client] トークンをCookieに保存しました');
+        } catch (error) {
+          console.error('[Client] トークンの取得に失敗しました:', error);
+        }
       } else {
-        alert("🔒 管理者権限がありません。");
+        if (!isLoading) { // 初回ロード中でない場合のみアラート表示
+          alert("🔒 管理者権限がありません。");
+        }
+        document.cookie = 'adminToken=; path=/admin; max-age=0'; // Cookieを削除
         goto('/');
       }
       isLoading = false;

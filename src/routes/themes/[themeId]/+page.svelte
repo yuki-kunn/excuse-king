@@ -30,6 +30,7 @@
 	let unsubscribe: (() => void) | undefined;
 	let unsubscribeAuth: (() => void) | undefined;
 	let sortBy: SortType = 'newest';
+	let isBanned = false;
 
 	$: posts = sortPosts(rawPosts, sortBy);
 	$: hasPosted = currentUser
@@ -39,8 +40,16 @@
 	onMount(async () => {
 		if (!themeId) return;
 
-		unsubscribeAuth = onAuthStateChanged(auth, (user) => {
+		unsubscribeAuth = onAuthStateChanged(auth, async (user) => {
 			currentUser = user;
+			if (user) {
+				const userDocRef = doc(db, 'users', user.uid);
+				const userSnap = await getDoc(userDocRef);
+				const userData = userSnap.data();
+				isBanned = userData?.isBanned || false;
+			} else {
+				isBanned = false;
+			}
 		});
 
 		const themeRef = doc(db, 'themes', themeId);
@@ -139,7 +148,9 @@
 		<LoadingSpinner message="お題を読み込み中..." />
 	{/if}
 
-	{#if hasPosted}
+	{#if isBanned}
+		<div class="banned-message">🚨 アカウントが凍結されているため、投稿できません</div>
+	{:else if hasPosted}
 		<div class="posted-message">✅ あなたはこのお題に投稿済みです</div>
 	{:else}
 		<a href={`/themes/${themeId}/post`} class="post-btn">✏️ 言い訳を投稿する</a>
@@ -247,6 +258,20 @@
 		padding: 16px;
 		border: 4px dashed #ccc;
 		border-radius: 12px;
+	}
+
+	.banned-message {
+		width: 100%;
+		box-sizing: border-box;
+		text-align: center;
+		background-color: #fef2f2;
+		color: #ef4444;
+		font-size: 16px;
+		font-weight: 900;
+		padding: 16px;
+		border: 4px solid #ef4444;
+		border-radius: 12px;
+		box-shadow: 6px 6px 0px #ef4444;
 	}
 
 	.posts-wrapper {

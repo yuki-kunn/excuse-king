@@ -1,6 +1,6 @@
 <script lang="ts">
 	import { db, auth } from '$lib/firebase/firebase';
-	import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp } from 'firebase/firestore';
+	import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, doc, getDoc } from 'firebase/firestore';
 	import { onMount, onDestroy } from 'svelte';
 	import { PAGINATION } from '$lib/constants/gameConstants';
 	import type { ThemeWithId } from '$lib/types';
@@ -47,6 +47,17 @@
 
 		isAddingManual = true;
 		try {
+			// BANチェック
+			const userDocRef = doc(db, 'users', user.uid);
+			const userSnap = await getDoc(userDocRef);
+			const dbUser = userSnap.data();
+
+			if (dbUser?.isBanned) {
+				alert("アカウントが凍結されているため、お題を追加できません🚨");
+				isAddingManual = false;
+				return;
+			}
+
 			await addDoc(collection(db, 'themes'), {
 				content: manualThemeText,
 				createdAt: serverTimestamp(),
@@ -70,6 +81,17 @@
 
 		isGeneratingAI = true;
 		try {
+			// BANチェック
+			const userDocRef = doc(db, 'users', user.uid);
+			const userSnap = await getDoc(userDocRef);
+			const dbUser = userSnap.data();
+
+			if (dbUser?.isBanned) {
+				alert("アカウントが凍結されているため、AIお題を生成できません🚨");
+				isGeneratingAI = false;
+				return;
+			}
+
 			const response = await fetch('/api/generateTheme', { method: 'POST' });
 			if (!response.ok) throw new Error('APIエラー');
 
