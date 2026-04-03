@@ -1,5 +1,14 @@
 import { initializeApp } from "firebase/app";
-import { getAuth, GoogleAuthProvider } from "firebase/auth";
+import {
+  getAuth,
+  GoogleAuthProvider,
+  createUserWithEmailAndPassword,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  updatePassword,
+  EmailAuthProvider,
+  reauthenticateWithCredential
+} from "firebase/auth";
 // Firestoreは後で使うので、一緒に準備しておきます
 import { getFirestore } from "firebase/firestore";
 
@@ -19,5 +28,7 @@ const app = initializeApp(firebaseConfig);
 
 // 認証（Auth）とデータベース（Firestore）の機能をエクスポートして他のファイルで使えるようにします
 export const auth = getAuth(app);
-export const provider = new GoogleAuthProvider();
+export const googleProvider = new GoogleAuthProvider();
+// 後方互換性のため、providerもエクスポート
+export const provider = googleProvider;
 export const db = getFirestore(app);

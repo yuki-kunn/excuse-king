@@ -123,6 +123,16 @@
     <div class="login-section">
       <p>遊ぶにはログインしてください</p>
       <button class="btn login-btn" on:click={loginWithGoogle}>Googleアカウントでログイン</button>
+
+      <div class="divider">
+        <span>または</span>
+      </div>
+
+      <div class="email-auth-links">
+        <a href="/login" class="btn email-login-btn">メール&パスワードでログイン</a>
+        <p class="signup-prompt">アカウントをお持ちでない方</p>
+        <a href="/signup" class="link">新規登録はこちら</a>
+      </div>
     </div>
   {/if}
 </div>
@@ -153,4 +163,62 @@
   .redirect-msg { color: #4285F4; font-weight: 900; margin-top: 24px; animation: pulse 1s infinite; }
   @keyframes pulse { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
   @keyframes popIn { 0% { opacity: 0; transform: scale(0.9); } 100% { opacity: 1; transform: scale(1); } }
+
+  /* メール認証セクションのスタイル */
+  .divider {
+    position: relative;
+    text-align: center;
+    margin: 20px 0;
+  }
+
+  .divider::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background-color: #ddd;
+  }
+
+  .divider span {
+    position: relative;
+    background-color: #f5f5f5;
+    padding: 0 12px;
+    color: #888;
+    font-weight: bold;
+    font-size: 14px;
+  }
+
+  .email-auth-links {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+  }
+
+  .email-login-btn {
+    background-color: #ffcc00;
+    color: #222;
+    text-decoration: none;
+    display: inline-block;
+    text-align: center;
+  }
+
+  .signup-prompt {
+    margin: 8px 0 0 0;
+    font-size: 14px;
+    color: #666;
+  }
+
+  .link {
+    color: #4285F4;
+    font-weight: 900;
+    text-decoration: none;
+    font-size: 16px;
+  }
+
+  .link:hover {
+    text-decoration: underline;
+  }
 </style>
